@@ -5,6 +5,7 @@ verify_ssl = true
 
 [dev-packages]
 jupyterlab = "*"
+ipywidgets = ">=7.5"
 
 [packages]
 numpy = "*"
