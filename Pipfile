@@ -13,6 +13,7 @@ scipy = "*"
 sympy = "*"
 plotly = "*"
 pandas = "*"
+jinja2 = "*"
 
 [requires]
 python_version = "3.8"

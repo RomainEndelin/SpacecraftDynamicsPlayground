@@ -1,0 +1,233 @@
+\documentclass{article}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath}
+\usepackage{hyperref}
+
+\title{Space Simulation}
+\author{Romain Endelin}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\section{Reference frame}
+
+$$
+N = { {{ latex(N.x) }}, {{ latex(N.y) }}, {{ latex(N.z) }} } \\
+A = { {{ latex(A.x) }}, {{ latex(A.y) }}, {{ latex(A.z) }} }
+$$
+
+$N$ is the inertial frame. Users will interact with $N$ to define their coordinates and velocity tensor.
+
+However, most calculations are performed in $A$. $A$ is the body frame.
+It is oriented into the body's direction, from its start point to its destination.
+
+\textbf{Remark:} We are now only working with particle. The object is a point, so it has no orientation/attitude.
+
+\section{Reference variables}
+
+\begin{align*}
+T \quad s \quad & \text{Total time to destination} \\
+t \quad s \quad & \text{Variable representing current time} \\
+R \quad \in [0, 1] & \quad \text{Acceleration breakpoint ratio}
+\end{align*}
+
+The object will accelerate while $t \leq T \times R$, and decelerate for $t > T \times R$.
+
+\section{Body motion}
+
+\subsection{Acceleration}
+
+Given:
+
+${{ latex(a_magnitude) }} \quad G \quad \text{ Acceleration magnitude, given } G=9.81 m.s^{-2}$
+
+Where $|a|$ is the perceived gravity within the object (regardless of the direction),
+
+We introduce:
+\begin{align*}
+{{ latex(compensate_y) }} \quad m.s^{-2} \quad & \text{Compensation acceleration over the } {{ latex(A.y) }} \text{ axis} \\
+{{ latex(compensate_z) }} \quad m.s^{-2} \quad & \text{Compensation acceleration over the } {{ latex(A.z) }} \text{ axis} \\
+\end{align*}
+
+We can now define:
+$$
+a = {{ latex(a_vector) }}
+$$
+
+If $|a| = 1 G = 9.81 m.s^{-2}$, travelers inside the object will feel gravity equivalent to Earth.
+
+$F_y$ and $F_z$ are meant to compensate the current velocity over ${{ latex(A.y) }}$ and ${{ latex(A.z) }}$ axes, while the main acceleration is towards ${{ latex(A.x) }}$.
+$a$ is normalized so that its magnitude equals $|a|$.
+
+\subsection{Initial Velocity}
+
+Given:
+\begin{align*}
+{{ latex(v0x_a) }} \quad m.s^{-1} \quad & \text{Initial velocity over the } {{ latex(A.x) }} \text{ axis} \\
+{{ latex(v0y_a) }} \quad m.s^{-1} \quad & \text{Initial velocity over the } {{ latex(A.y) }} \text{ axis} \\
+{{ latex(v0z_a) }} \quad m.s^{-1} \quad & \text{Initial velocity over the } {{ latex(A.z) }} \text{ axis}
+\end{align*}
+
+We introduce initial velocity:
+$$
+v_0 = {{ latex(v0_vector) }}
+$$
+
+\subsection{Initial Position}
+
+We have defined ${{ latex(A) }}$ so that $p^A(0) = 0$.
+
+\subsection{Motion params}
+
+By integrating $a$, and providing $v_0$ (and $d_0 = 0$), we obtain the velocity and position of the body at time $t$:
+\begin{align*}
+a(t) =& {{ latex(a_fn) }} \\
+v(t) =& {{ latex(v_fn) }} \\
+p(t) =& {{ latex(p_fn) }}
+\end{align*}
+
+\section[Solving T, R, Fy, Fz]{Solving ${{ latex(T) }}$, ${{ latex(R) }}$, ${{ latex(compensate_y) }}$ and ${{ latex(compensate_z) }}$}
+
+Let us first introduce the velocity and position at time $T$.
+
+\subsection[Final position pT]{Final position $p_T$}
+Given:
+\begin{align*}
+{{ latex(distance) }} \quad m \quad & \text{Total distance to destination, to be reached at time } T \\
+\end{align*}
+
+We introduce final position $p_T$. ${{ latex(A) }}$ is oriented so that $p_T$ is aligned with ${{ latex(A.x) }}$:
+$$
+p_T = {{ latex(pT_vector) }}
+$$
+
+\subsection[Final Velocity vT]{Final Velocity $v_T$}
+
+Given:
+\begin{align*}
+{{ latex(vTx_a) }} \quad m.s^{-1} \quad & \text{Velocity at time } T \text{ over the } {{ latex(A.x) }} \text{ axis} \\
+{{ latex(vTy_a) }} \quad m.s^{-1} \quad & \text{Velocity at time } T \text{ over the } {{ latex(A.y) }} \text{ axis} \\
+{{ latex(vTz_a) }} \quad m.s^{-1} \quad & \text{Velocity at time } T \text{ over the } {{ latex(A.z) }} \text{ axis}
+\end{align*}
+
+We introduce final velocity $v_T$. This is the expected velocity at destination:
+$$
+v_T = {{ latex(vT_vector) }}
+$$
+
+\subsection{Defining the problem set}
+
+We recognize the following equalities:
+\begin{equation}
+\begin{cases}
+v_T = v(T) \\
+p_T = p(T)
+\end{cases}
+\end{equation}
+
+Which expands into:
+\begin{equation}
+\begin{cases}
+{{ latex(vT_vector) }} = {{ latex(v_fn_T) }} \\
+{{ latex(pT_vector) }} = {{ latex(p_fn_T) }}
+\end{cases}
+\end{equation}
+
+By isolating components and balancing the equation, this translates into the following problem set:
+\begin{equation}
+{{ latex(eq_matrix) }}
+\end{equation}
+
+We need to solve the following unknowns: $T$, $R$, $F_y$ and $F_z$
+
+\subsubsection[Solving Fy and Fz]{Solving ${{ latex(compensate_y) }}$ and ${{ latex(compensate_z) }}$}
+
+We first focus on solving ${{ latex(compensate_y) }}$ and ${{ latex(compensate_z) }}$.
+
+This solves into: ${ {{ latex(compensate_y) }}, {{ latex(compensate_z) }} } = {{ latex(result_compensate) }}$
+
+\subsubsection[Solving R]{Solving $R$}
+
+We now focus on solving $R$.
+The first equality is enough to solve it: ${{ latex(eq_matrix[0]) }} = 0$.
+
+After substuting ${{ latex(compensate_y) }}$ and ${{ latex(compensate_z) }}$, this solves into $R = {{ latex(result_R) }}$
+
+\section[Coordinates in the Inertial Frame N]{Coordinates in the Inertial Frame $N$}
+
+All coordinates are defined by the user in the inertial frame $N$:
+\begin{align*}
+v_0 &= {{ latex(v0_vector_N) }} \quad & m.s^{-1} \quad & \text{ Velocity at } t_0 \\
+v_T &= {{ latex(vT_vector_N) }} \quad & m.s^{-1} \quad & \text{ Velocity at destination} \\
+p_0 &= {{ latex(p0_vector_N) }} \quad & m \quad & \text{ Position at } t_0 \\
+p_T &= {{ latex(pT_vector_N) }} \quad & m \quad & \text{ Position at destination} \\
+\end{align*}
+
+\subsection[Orienting reference frame A relative to N]{Orienting reference frame $A$ relative to $N$}
+
+Let us first introduce the direction unit vector:
+\begin{align*}
+\vec{d} & = \frac{p_T - p_0}{|p_T - p_0|} \\
+          & = {{ latex(direction_vector) }}
+\end{align*}
+
+We want to align the object direction with ${{ latex(A.x) }}$. In other words, we want to orient $A$ relative to $N$, so that $\vec{d} = |d| {{ latex(A.x) }}$.
+
+We need to define a DCM (Direction Cosine Matrix) $[AN]$, so that $A = [AN] \times N$.
+
+Generally, a DCM is defined as:
+$$
+\text{DC} = \begin{vmatrix}
+a_{11} & a_{12} & a_{13} \\
+a_{21} & a_{22} & a_{23} \\
+a_{31} & a_{32} & a_{33}
+\end{vmatrix}
+$$
+
+\subsubsection[Orienting A.x]{Orienting ${{ latex(A.x) }}$}
+
+We can easily infer the first row of $[AN]$:
+\begin{align*}
+{{ latex(A.x) }} &= a_{11} {{ latex(N.x) }} + a_{12} {{ latex(N.y) }} + a_{13} {{ latex(N.z) }} \\
+             &= {{ latex(direction_vector) }}
+\end{align*}
+
+\subsubsection[Orienting A.y]{Orienting ${{ latex(A.y) }}$}
+
+Now for the second row, we need the rotation matrix Rot so that ${{ latex(A.x) }} = \text{Rot} \times {{ latex(N.x) }}$
+We will use \href{https://en.wikipedia.org/wiki/Rodrigues\%27_rotation_formula}{Rodrigues ROtation Formula} to calculate Rot.
+
+We introduce $c$ as the dot-product of ${{ latex(N.x) }}$ and ${{ latex(A.x) }}$ ($c$ is the cosine of the angle between ${{ latex(N.x) }}$ and ${{ latex(A.x) }}$).
+We then introduce $v$ as the cross-product of ${{ latex(N.x) }}$ and ${{ latex(A.x) }}$, and $K$ as:
+$$
+K = \begin{vmatrix}
+0 & - v_z & v_y \\
+v_z & 0 & - v_x \\
+- v_y & v_x & 0
+\end{vmatrix}
+$$
+
+Thanks to Rodrigues rotation formula, we calculate that:
+$$
+\text{Rot} = I_3 + K + K^2 \times \frac{1 - c}{1 - c^2}
+$$
+
+We then obtain ${{ latex(A.y) }} = \text{Rot} \times {{ latex(N.y) }}$.
+
+\subsubsection[Orienting A.z]{Orienting ${{ latex(A.z) }}$}
+
+Finally, for the third row, we simply use the cross-product of ${{ latex(A.x) }}$ and ${{ latex(A.y) }}$.
+
+\subsubsection{Validating DCM}
+
+We can validate the DCM by expressing $p_T - p_0$ in both ${{ latex(N) }}$ and ${{ latex(A) }}$.
+
+\begin{align*}
+p_T - p_0 & = {{ latex((pT_vector_N - p0_vector_N).express(N)) }} \\
+          & = {{ latex((pT_vector_N - p0_vector_N).express(A).simplify()) }}
+\end{align*}
+
+\end{document}
