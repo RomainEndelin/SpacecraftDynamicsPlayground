@@ -2,54 +2,11 @@ from functools import partial
 
 import numpy as np
 import plotly.graph_objects as go
+from sympy import symbols
 from sympy.utilities.lambdify import lambdify
 
-from space_sim.maths.helpers import G
-from space_sim.maths.main import (
-    A,
-    N,
-    R,
-    T,
-    a_fn,
-    a_magnitude,
-    distance,
-    p0_vector_N,
-    p0x_n,
-    p0y_n,
-    p0z_n,
-    p_fn,
-    pT_vector_N,
-    pTx_n,
-    pTy_n,
-    pTz_n,
-    solved_R,
-    solved_T,
-    t,
-    v0_magnitude,
-    v_fn,
-    vT_magnitude,
-)
-
-
-def v_args(args):
-    return {
-        G: 9.807,
-        a_magnitude: args["a_magnitude"],
-        v0_magnitude: args["v0_magnitude"],
-        vT_magnitude: args["vT_magnitude"],
-    }
-
-
-def p_args(args):
-    return {
-        **v_args(args),
-        p0x_n: args["p0x_n"],
-        p0y_n: args["p0y_n"],
-        p0z_n: args["p0z_n"],
-        pTx_n: args["pTx_n"],
-        pTy_n: args["pTy_n"],
-        pTz_n: args["pTz_n"],
-    }
+from space_sim.maths.constants import G
+from space_sim.maths.workflow import main
 
 
 def _make_scatter(fn, axis, base_name, x_vals, line_shape):
@@ -61,97 +18,140 @@ def _make_scatter(fn, axis, base_name, x_vals, line_shape):
     )
 
 
-def make_plot(title, base_name, fn, args, line_shape="spline"):
-    d = (pT_vector_N - p0_vector_N).to_matrix(A).subs(p_args(args))[0]
-
-    R_val = solved_R.subs(v_args(args))
-    T_val = solved_T.subs({**p_args(args), distance: d})
-
-    t_vals = np.linspace(0, float(T_val), 99)
-    final_fn = lambdify(t, fn.to_matrix(N).subs({**p_args(args), T: T_val, R: R_val}),)
+def make_plot(T, fn, title, base_name, line_shape):
+    t_vals = np.linspace(0, float(T), 99)
 
     scatter = partial(
         _make_scatter, base_name=base_name, x_vals=t_vals, line_shape=line_shape
     )
 
     fig = go.Figure()
-    fig.add_trace(scatter(lambda t: final_fn(t)[0][0], "x"))
-    fig.add_trace(scatter(lambda t: final_fn(t)[1][0], "y"))
-    fig.add_trace(scatter(lambda t: final_fn(t)[2][0], "z"))
+    fig.add_trace(scatter(partial(fn, i=0), "x"))
+    fig.add_trace(scatter(partial(fn, i=1), "y"))
+    fig.add_trace(scatter(partial(fn, i=2), "z"))
 
     fig.update_layout(title=title, xaxis_title="t", yaxis_title=base_name)
     return fig
 
 
-def plot_position(**args):
-    plot = make_plot("Position", "p(t)", p_fn + p0_vector_N, args)
+def evaluate(fn, symbols, values):
+    association = {symbols[key]: values[key] for key in symbols.keys()}
+    return fn.subs({**association, G: 9.807})
+
+
+def to_lambda(t, fn):
+    lambdified = lambdify(t, fn)
+
+    def final_fn(t, i):
+        return lambdified(t)[i][0]
+
+    return final_fn
+
+
+def plot_position(t, T, p_fn, frames, variables, **args):
+    T = evaluate(T, variables, args)
+    p_fn = to_lambda(t, evaluate(p_fn.to_matrix(frames["N"]), variables, args))
+
+    plot = make_plot(T, p_fn, "Position", "p(t)", line_shape="spline")
     plot.show()
 
 
-def plot_velocity(**args):
-    plot = make_plot("Velocity", "v(t)", v_fn, args)
+def plot_velocity(t, T, v_fn, frames, variables, **args):
+    T = evaluate(T, variables, args)
+    v_fn = to_lambda(t, evaluate(v_fn.to_matrix(frames["N"]), variables, args))
+
+    plot = make_plot(T, v_fn, "Velocity", "v(t)", line_shape="spline")
     plot.show()
 
 
-def plot_acceleration(**args):
-    plot = make_plot("Acceleration", "a(t)", a_fn, args, line_shape="hv")
+def plot_acceleration(t, T, a_fn, frames, variables, **args):
+    T = evaluate(T, variables, args)
+    a_fn = to_lambda(t, evaluate(a_fn.to_matrix(frames["N"]), variables, args))
+
+    plot = make_plot(T, a_fn, "Acceleration", "a(t)", line_shape="hv")
     plot.show()
 
 
-def plot_3d_position(**args):
-    # TODO: Initial position
-    d = (pT_vector_N - p0_vector_N).to_matrix(A).subs(p_args(args))[0]
+def make_scatter3d(base_name, t_vals, p, v, a, p_mag, v_mag, a_mag):
+    scatter3d = go.Scatter3d(
+        x=[p(t_val, 0) for t_val in t_vals],
+        y=[p(t_val, 1) for t_val in t_vals],
+        z=[p(t_val, 2) for t_val in t_vals],
+        line={
+            "color": list(t_vals),
+            "colorscale": "Viridis",
+            "colorbar": {"title": "t"},
+        },
+        marker={"size": 2, "color": list(t_vals), "colorscale": "Viridis"},
+        name=f"{base_name}(t)",
+    )
+    scatter3d.customdata = np.dstack(
+        (
+            [p_mag(t_val) for t_val in t_vals],
+            [v_mag(t_val) for t_val in t_vals],
+            [v(t_val, 0) for t_val in t_vals],
+            [v(t_val, 1) for t_val in t_vals],
+            [v(t_val, 2) for t_val in t_vals],
+            [a_mag(t_val) for t_val in t_vals],
+            [a(t_val, 0) for t_val in t_vals],
+            [a(t_val, 2) for t_val in t_vals],
+            [a(t_val, 2) for t_val in t_vals],
+        )
+    )[0]
+    scatter3d.hovertemplate = """
+    p:%{customdata[0]:.1f} m - (x:%{x:.1f}, y:%{y:.1f}, z:%{z:.1f})<br>
+    v:%{customdata[1]:.1f} m/s - (x:%{customdata[2]:.1f}, y:%{customdata[3]:.1f}, z:%{customdata[4]:.1f})<br>
+    a:%{customdata[5]:.1f} m/s2 - (x:%{customdata[6]:.1f}, y:%{customdata[7]:.1f}, z:%{customdata[8]:.1f})
+    """
+    return scatter3d
 
-    R_val = solved_R.subs(v_args(args))
-    T_val = solved_T.subs({**p_args(args), distance: d})
 
-    t_sample = np.linspace(0, float(T_val), 99)
-    d = lambdify(t, p_fn.to_matrix(N).subs({**p_args(args), T: T_val, R: R_val}))
-    p_mag = lambdify(t, p_fn.to_matrix(A).subs({**p_args(args), T: T_val, R: R_val}))
-    v = lambdify(t, v_fn.to_matrix(N).subs({**p_args(args), T: T_val, R: R_val}))
-    v_mag = lambdify(t, v_fn.to_matrix(A).subs({**p_args(args), T: T_val, R: R_val}))
-    a = lambdify(t, a_fn.to_matrix(N).subs({**p_args(args), T: T_val, R: R_val}))
-    a_mag = lambdify(t, a_fn.to_matrix(A).subs({**p_args(args), T: T_val, R: R_val}))
+def make_3d_plot(T, p, v, a, p_mag, v_mag, a_mag, title, base_name):
+    t_vals = np.linspace(0, float(T), 99)
 
     fig = go.Figure()
-    fig.add_trace(
-        go.Scatter3d(
-            x=[d(t_val)[0][0] for t_val in t_sample],
-            y=[d(t_val)[1][0] for t_val in t_sample],
-            z=[d(t_val)[2][0] for t_val in t_sample],
-            customdata=np.dstack(
-                (
-                    [p_mag(t_val)[0][0] for t_val in t_sample],
-                    [v_mag(t_val)[0][0] for t_val in t_sample],
-                    [v(t_val)[0][0] for t_val in t_sample],
-                    [v(t_val)[1][0] for t_val in t_sample],
-                    [v(t_val)[2][0] for t_val in t_sample],
-                    [a_mag(t_val)[0][0] for t_val in t_sample],
-                    [a(t_val)[0][0] for t_val in t_sample],
-                    [a(t_val)[1][0] for t_val in t_sample],
-                    [a(t_val)[2][0] for t_val in t_sample],
-                )
-            )[0],
-            hovertemplate="""
-            p:%{customdata[0]:.1f} m - (x:%{x:.1f}, y:%{y:.1f}, z:%{z:.1f})<br>
-            v:%{customdata[1]:.1f} m/s - (x:%{customdata[2]:.1f}, y:%{customdata[3]:.1f}, z:%{customdata[4]:.1f})<br>
-            a:%{customdata[5]:.1f} m/s2 - (x:%{customdata[6]:.1f}, y:%{customdata[7]:.1f}, z:%{customdata[8]:.1f})
-        """,
-            line={
-                "color": list(t_sample),
-                "colorscale": "Viridis",
-                "colorbar": {"title": "t"},
-            },
-            marker={"size": 2, "color": list(t_sample), "colorscale": "Viridis"},
-            name="p(t)",
-        )
-    )
+    fig.add_trace(make_scatter3d(base_name, t_vals, p, v, a, p_mag, v_mag, a_mag))
 
     fig.update_layout(
-        title="3D Position",
-        xaxis_title="p(x)",
-        yaxis_title="p(y)",
+        title=title,
+        xaxis_title=f"{base_name}(x)",
+        yaxis_title=f"{base_name}(y)",
         autosize=True,
         height=700,
     )
-    fig.show(config={"scrollZoom": False})
+    return fig
+
+
+def plot_3d_position(t, T, a_fn, v_fn, p_fn, frames, variables, **args):
+    T = evaluate(T, variables, args)
+    a_fn_N = to_lambda(t, evaluate(a_fn.to_matrix(frames["N"]), variables, args))
+    v_fn_N = to_lambda(t, evaluate(v_fn.to_matrix(frames["N"]), variables, args))
+    p_fn_N = to_lambda(t, evaluate(p_fn.to_matrix(frames["N"]), variables, args))
+
+    a_mag = lambdify(t, evaluate(a_fn.magnitude(), variables, args))
+    v_mag = lambdify(t, evaluate(v_fn.magnitude(), variables, args))
+    p_mag = lambdify(t, evaluate(p_fn.magnitude(), variables, args))
+
+    plot = make_3d_plot(
+        T, p_fn_N, v_fn_N, a_fn_N, p_mag, v_mag, a_mag, "3D Position", "p"
+    )
+    plot.show(config={"scrollZoom": False})
+
+
+def wrap_plots_in_system(*plots):
+    t = symbols("t", real=True, nonnegative=True)
+    T, a_fn, v_fn, p_fn, frames, variables = main(t)
+
+    return [
+        partial(
+            plot,
+            t=t,
+            T=T,
+            a_fn=a_fn,
+            v_fn=v_fn,
+            p_fn=p_fn,
+            frames=frames,
+            variables=variables,
+        )
+        for plot in plots
+    ]

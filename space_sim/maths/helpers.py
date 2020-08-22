@@ -9,6 +9,10 @@ from space_sim.maths.constants import G
 # the code into functions
 
 
+def make_vector(frame, x, y, z):
+    return frame.x * x + frame.y * y + frame.z * z
+
+
 ## Orienting A relative to N
 def make_rotation_matrix(origin_vector, destination_vector):
     v = origin_vector.cross(destination_vector)
