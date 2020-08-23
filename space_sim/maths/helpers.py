@@ -57,14 +57,22 @@ def motion_params(frame, a, v0, t):
     return a_fn, v_fn, p_fn
 
 
-def solve_R_T(frame, p_t, p_T, v_t, v_T, t, R, T):
-    computed_v_T = v_t.subs(t, T).applyfunc(partial(replace_min_T, R=R, T=T))
-    computed_p_T = p_t.subs(t, T).applyfunc(partial(replace_min_T, R=R, T=T))
+def eval_in_T(vector, t, T, R):
+    return vector.subs(t, T).applyfunc(partial(replace_min_T, R=R, T=T))
 
-    eq_matrix = (
-        v_T.to_matrix(frame).col_join(p_T.to_matrix(frame))
-        - computed_v_T.to_matrix(frame).col_join(computed_p_T.to_matrix(frame))
+
+def make_equation_matrix(frame, computed_pT, computed_vT, expected_pT, expected_vT):
+    return (
+        expected_vT.to_matrix(frame).col_join(expected_pT.to_matrix(frame))
+        - computed_vT.to_matrix(frame).col_join(computed_pT.to_matrix(frame))
     ).simplify()
+
+
+def solve_R_T(frame, p_t, p_T, v_t, v_T, t, R, T):
+    computed_v_T = eval_in_T(v_t, t, T, R)
+    computed_p_T = eval_in_T(p_t, t, T, R)
+
+    eq_matrix = make_equation_matrix(frame, computed_p_T, computed_v_T, p_T, v_T)
 
     ## Solving R
 
