@@ -35,11 +35,43 @@ def align_x_to_vector_dcm(frame, vector):
 
 
 ## Motion
-def acceleration_algorithm(frame, G_multiplier, T, R):
+def acceleration_algorithm(frame, T, Rx, Ry, Rz, Mx, My, Mz):
     return (
         frame.x
-        * Piecewise((-1, T * R - dynamicsymbols._t < 0), (1, True))
-        * G_multiplier
+        * Piecewise(
+            (-1, T * Rx - dynamicsymbols._t < 0),
+            (1, T * Rx - dynamicsymbols._t > 0),
+            (0, True),
+        )
+        * Mx
+        * G
+        + frame.y
+        * Piecewise(
+            (-1, T * Ry - dynamicsymbols._t < 0),
+            (1, T * Ry - dynamicsymbols._t > 0),
+            (0, True),
+        )
+        * My
+        * G
+        + frame.z
+        * Piecewise(
+            (-1, T * Rz - dynamicsymbols._t < 0),
+            (1, T * Rz - dynamicsymbols._t > 0),
+            (0, True),
+        )
+        * Mz
+        * G
+    )
+
+
+def acceleration_algorithm2(frame, M, T, Rx, Ry, Rz, Mx, My, Mz):
+    return (
+        (
+            frame.x * Piecewise((-1, T * Rx - dynamicsymbols._t < 0), (1, True)) * Mx
+            + frame.y * Piecewise((-1, T * Ry - dynamicsymbols._t < 0), (1, True)) * My
+            + frame.z * Piecewise((-1, T * Rz - dynamicsymbols._t < 0), (1, True)) * Mz
+        ).normalize()
+        * M
         * G
     )
 
@@ -57,35 +89,101 @@ def motion_params(frame, a, v0, t):
     return a_fn, v_fn, p_fn
 
 
-def eval_in_T(vector, t, T, R):
-    return vector.subs(t, T).applyfunc(partial(replace_min_T, R=R, T=T))
+def eval_in_T(vector, t, T, Rx, Ry, Rz):
+    return (
+        vector.subs(t, T)
+        .applyfunc(partial(replace_min_T, R=Rx, T=T))
+        .applyfunc(partial(replace_min_T, R=Ry, T=T))
+        .applyfunc(partial(replace_min_T, R=Rz, T=T))
+    )
 
 
-def make_equation_matrix(frame, computed_pT, computed_vT, expected_pT, expected_vT):
+def solve_RT_1d(axis, computed_pT, computed_vT, expected_pT, expected_vT, R, T):
+    result_R = solveset((computed_vT - expected_vT).dot(axis), R)
+    solved_R = list(result_R)[0]
+
+    result_T = solveset((computed_pT - expected_pT).dot(axis).subs({R: solved_R}), T)
+    # TODO: Why is it two solutions?
+    solved_T = list(result_T)[1]
+    return solved_R, solved_T
+
+
+def make_equation_matrix(
+    frame, computed_pT, computed_vT, computed_M, expected_pT, expected_vT, expected_M
+):
+    return (
+        expected_vT.to_matrix(frame)
+        .col_join(expected_pT.to_matrix(frame))
+        .col_join(expected_M)
+        - computed_vT.to_matrix(frame)
+        .col_join(computed_pT.to_matrix(frame))
+        .col_join(computed_M)
+    ).simplify()
+
+
+def make_equation_matrix2(frame, computed_pT, computed_vT, expected_pT, expected_vT):
     return (
         expected_vT.to_matrix(frame).col_join(expected_pT.to_matrix(frame))
         - computed_vT.to_matrix(frame).col_join(computed_pT.to_matrix(frame))
     ).simplify()
 
 
-def solve_R_T(frame, p_t, p_T, v_t, v_T, t, R, T):
-    computed_v_T = eval_in_T(v_t, t, T, R)
-    computed_p_T = eval_in_T(p_t, t, T, R)
+def solve_system(frame, p_t, p_T, v_t, v_T, M, t, unknowns):
+    computed_v_T = eval_in_T(
+        v_t, t, unknowns["T"], unknowns["Rx"], unknowns["Ry"], unknowns["Rz"]
+    )
+    computed_p_T = eval_in_T(
+        p_t, t, unknowns["T"], unknowns["Rx"], unknowns["Ry"], unknowns["Rz"]
+    )
+    computed_M = (
+        unknowns["Mx"] * frame.x + unknowns["My"] * frame.y + unknowns["My"] * frame.z
+    ).magnitude()
 
-    eq_matrix = make_equation_matrix(frame, computed_p_T, computed_v_T, p_T, v_T)
+    eq_matrix = make_equation_matrix(
+        frame, computed_p_T, computed_v_T, computed_M, p_T, v_T, M
+    )
 
     ## Solving R
 
-    result_R = solveset(eq_matrix[0], R)
-    solved_R = list(result_R)[0]
+    solved_Rx = list(solveset(eq_matrix[0], unknowns["Rx"]))[0]
+    solved_Ry = list(solveset(eq_matrix[1], unknowns["Ry"]))[0]
+    solved_Rz = list(solveset(eq_matrix[2], unknowns["Rz"]))[0]
+
+    ## Solving M
+
+    intermediate_matrix = eq_matrix.subs(
+        {
+            unknowns["Rx"]: solved_Rx,
+            unknowns["Ry"]: solved_Ry,
+            unknowns["Rz"]: solved_Rz,
+        }
+    ).simplify()
+
+    solved_Mx = list(solveset(intermediate_matrix[0], unknowns["Mx"]))[0]
+    solved_My = list(solveset(intermediate_matrix[1], unknowns["My"]))[0]
+    solved_Mz = list(solveset(intermediate_matrix[2], unknowns["Mz"]))[0]
 
     ## Solving T
 
-    intermediate_matrix = eq_matrix.subs({R: solved_R}).simplify()
+    intermediate_matrix2 = intermediate_matrix.subs(
+        {
+            unknowns["Mx"]: solved_Mx,
+            unknowns["My"]: solved_My,
+            unknowns["Mz"]: solved_Mz,
+        }
+    ).simplify()
 
-    solved_T1, solved_T2 = solveset(intermediate_matrix[3], T)
+    solved_T1, solved_T2 = solveset(intermediate_matrix2[3], unknowns["T"])
     solved_T = Max(solved_T1, solved_T2)
-    return solved_R, solved_T
+    return {
+        "Rx": solved_Rx,
+        "Ry": solved_Ry,
+        "Rz": solved_Rz,
+        "Mx": solved_Mx,
+        "My": solved_My,
+        "Mz": solved_Mz,
+        "T": solved_T,
+    }
 
 
 ## Utilities
